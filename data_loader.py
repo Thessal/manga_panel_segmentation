@@ -16,6 +16,8 @@
 # +
 # Docker host : Ubuntu 22.04, 5.15.0-50-generic, Driver Version: 520.61.05    CUDA Version: 11.8
 # Docker image : nvcr.io/nvidia/tensorflow:22.04-tf2-py3
+# tf.__version__ = 2.8.0
+# tfa.__version__ = 0.16.1
 
 import os
 import tensorflow as tf
@@ -29,8 +31,9 @@ import matplotlib.pyplot as plt
 import scipy
 import tensorflow_addons as tfa
 import math
+import random
+import json
 et = xml.etree.ElementTree
-print(tf.__version__, tfa.__version__)
 # -
 
 # Reference : 
@@ -60,6 +63,7 @@ print(tf.__version__, tfa.__version__)
 """
 
 
+# +
 class manga109_dataloader:
     def __init__(self, skip_empty=True, path="Manga109s_released_2021_12_30"):
         with open(f"{path}/books.txt", "r") as f:
@@ -83,18 +87,21 @@ class manga109_dataloader:
             y0, y1, x0, x1 = int(frame["ymin"]), int(frame["ymax"]),int(frame["xmin"]), int(frame["xmax"])
             y0, y1, x0, x1 = max(r,y0), min(y_siz-r,y1), max(r,x0), min(x_siz-r,x1)
             if (y0+r < y1-r) and (x0+r < x1-r):
+                inside_mask[y0:y1, x0:x1]=False
                 border_mask[y0:y1, x0:x1]=True
+#                 border_mask[y0+r:y1-r, x0+r:x1-r]=False
+#                 inside_mask[y0+r:y1-r, x0+r:x1-r]=True
                 inside_mask[y0+r:y1-r, x0+r:x1-r]=True
 
         np_mask[:,:,1] = 255 * (scipy.ndimage.binary_dilation(border_mask, kernel)^inside_mask)
         np_mask[:,:,0] = 255 * inside_mask
-        np_mask[:,:,2] = np.where(np.sum(np_mask[:,:,[0,1]], axis=2),0,252)
+        np_mask[:,:,2] = np.where(np.sum(np_mask[:,:,[0,1]], axis=2),0,255)
 
         return tf.convert_to_tensor(np_mask)
 
     @staticmethod
     def augment(image, mask, r=10):
-        max_angle = 5
+        max_angle = 3
         border_px = r * 2
         degrees = np.random.random(1)[0] * max_angle * 2 - max_angle
         fill_value = np.random.random(1)[0] * 255
@@ -113,7 +120,8 @@ class manga109_dataloader:
             fill_value = 0
         )
         # low frequency noise
-        background = tf.random.uniform(shape=[x//300 for x in image.shape[:2]]+[1], minval=0, maxval=255, dtype=tf.int32)
+        noise_freq = int(((image.shape[0] + image.shape[1]) / 5) * (1 + np.random.random(1)[0]))
+        background = tf.random.uniform(shape=[x//noise_freq for x in image.shape[:2]]+[1], minval=0, maxval=255, dtype=tf.int32)
         background = tf.image.resize(background, image.shape[0:2], method='bilinear',#method='gaussian',
             preserve_aspect_ratio=False,
             antialias=False,
@@ -139,41 +147,79 @@ class manga109_dataloader:
 
         return image, mask
 
-    def load_all(self):
+    def load_all(self, shuffle=True):
+        q = []
         for book in self.books:
             with open(self.path_annotations+"/"+book+".xml", 'r') as f:
                 annotation = et.fromstring(f.read())
             pages = annotation[1]
             for page in pages:
-                image, mask = self.load(book, page)
-                if (image == None) or (mask==None):
-                    continue
-                yield image, mask
+                q.append((book, page))
+                
+        if shuffle:
+            random.shuffle(q)
+            
+        for book, page in q:
+            frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
+            info = {"book":book, "index":page.attrib["index"], "frames":[dict(frame) for frame in frames]}
+            image, mask = self.load(**info)
+            if (image == None) or (mask==None):
+                continue
+            key = f"{book}_{str(page.attrib['index'])}"
+            yield key, image, mask
     
-    def load(self, book, page):
-        pagenum = page.attrib["index"]
+    def load_page_info(self):
+        for book in self.books:
+            with open(self.path_annotations+"/"+book+".xml", 'r') as f:
+                annotation = et.fromstring(f.read())
+            pages = annotation[1]
+            for page in pages:
+                frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
+                if len(frames)>0:
+                    info = {"book":book, "index":page.attrib["index"], "frames":[dict(frame) for frame in frames]}
+                    yield json.dumps(info)
+    
+    def load(self, book, index, frames, grayscale=True):
+        pagenum = index
+#         frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
+
         image_path = self.path_images+"/"+book+f"/{('000'+pagenum)[-3:]}.jpg"
         image = tf.io.read_file(image_path)
         image = tf.image.decode_jpeg(image, channels=3)
         
-        frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
         if self.skip_empty and (len(frames) == 0):
             return None, None
         mask = self.make_mask(image.shape,frames)
         image, mask = self.augment(image, mask)
+        if grayscale:
+            mask = tf.image.rgb_to_grayscale(mask)
         
         return image, mask
-
+    
+    
+# -
 
 if __name__ == "__main__":
-    loader = manga109_dataloader()
-    img_mask = loader.load_all()
-
-    for _ in range(3):
-        image, mask = next(img_mask)
+    def show(image,mask):
         plt.figure()
         plt.imshow(image.numpy())
         plt.figure()
+        # plt.figure(figsize=(20,20))
         plt.imshow(mask.numpy())
+        
+    loader = manga109_dataloader()
+    
+    dataset = list(loader.load_page_info())
+    info = json.loads(dataset[10])
+    info["grayscale"] = False
+    image, mask = loader.load(**info)
+    show(image, mask)
+    
+    img_mask = loader.load_all()
+    for _ in range(3):
+        key, image, mask = next(img_mask)
+        show(image, mask)
+
+
 
 
