@@ -16,7 +16,7 @@
 from data_loader import manga109_dataloader
 import tensorflow as tf
 import numpy as np
-from model import build_unet_model
+from model import unet_model
 
 # +
 # image.map(load_image_train)
@@ -25,7 +25,10 @@ IMAGE_SIZE = 224
 BACKGROUND_LABEL = 0
 BORDER_LABEL = 1
 CONTENT_LABEL = 2
+OUTPUT_CHANNELS = 3
 
+
+# +
 def tf_count(t, val):
     elements_equal_to_value = tf.equal(t, val)
     as_ints = tf.cast(elements_equal_to_value, tf.int32)
@@ -84,13 +87,9 @@ if __name__ == "__main__":
     output_types=(tf.string, tf.uint8, tf.uint8), 
     output_shapes=(None, (None,None,3), (None,None,1)))
     
-    unet_model = build_unet_model()
+    unet_model = unet_model(OUTPUT_CHANNELS)
     
     ## dataset test
     train_batches = ds.take(10)
     for x in train_batches.batch(2).enumerate():
         print(x)
-
-
-
-
