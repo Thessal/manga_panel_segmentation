@@ -63,7 +63,6 @@ et = xml.etree.ElementTree
 """
 
 
-# +
 class manga109_dataloader:
     def __init__(self, skip_empty=True, path="Manga109s_released_2021_12_30"):
         with open(f"{path}/books.txt", "r") as f:
@@ -195,8 +194,53 @@ class manga109_dataloader:
             mask = tf.image.rgb_to_grayscale(mask)
         
         return image, mask
-    
-    
+
+
+# +
+IMAGE_SIZE = 224
+BACKGROUND_LABEL = 0
+BORDER_LABEL = 1
+CONTENT_LABEL = 2
+
+def tf_count(t, val):
+    elements_equal_to_value = tf.equal(t, val)
+    as_ints = tf.cast(elements_equal_to_value, tf.int32)
+    count = tf.reduce_sum(as_ints)
+    return count
+
+@tf.function
+def load_image_train(key, image, mask):
+    # https://github.com/pedrovgs/DeepPanel
+    mask = tf.where(mask == 255, np.dtype('uint8').type(BACKGROUND_LABEL), mask)
+    # Dark values will use label the background label
+    mask = tf.where(mask == 29, np.dtype('uint8').type(BACKGROUND_LABEL), mask)
+    # Intermediate values will act as the border
+    mask = tf.where(mask == 76, np.dtype('uint8').type(BORDER_LABEL), mask)
+    mask = tf.where(mask == 134, np.dtype('uint8').type(BORDER_LABEL), mask)
+    # Brighter values will act as the content
+    mask = tf.where(mask == 149, np.dtype('uint8').type(CONTENT_LABEL), mask)
+
+    # https://github.com/pedrovgs/DeepPanel
+    input_image = tf.image.resize_with_pad(image, target_height=IMAGE_SIZE, target_width=IMAGE_SIZE)
+    input_mask = tf.image.resize_with_pad(mask, target_height=IMAGE_SIZE,
+                                          target_width=IMAGE_SIZE)
+    if tf.random.uniform(()) > 0.5:
+        input_image = tf.image.flip_left_right(input_image)
+        input_mask = tf.image.flip_left_right(input_mask)
+    # input_image, input_mask = normalize(input_image, input_mask)
+    number_of_pixels_per_image = IMAGE_SIZE * IMAGE_SIZE
+    percentage_of_background_labels = tf_count(input_mask, BACKGROUND_LABEL) / number_of_pixels_per_image
+    percentage_of_content_labels = tf_count(input_mask, CONTENT_LABEL) / number_of_pixels_per_image
+    percentage_of_border_labels = tf_count(input_mask, BORDER_LABEL) / number_of_pixels_per_image
+    background_weight = tf.cast(0.33 / percentage_of_background_labels, tf.float32)
+    content_weight = tf.cast(0.34 / percentage_of_content_labels, tf.float32)
+    border_weight = tf.cast(0.33 / percentage_of_border_labels, tf.float32)
+    weights = tf.where(input_mask == BACKGROUND_LABEL, background_weight, input_mask)
+    weights = tf.where(input_mask == BORDER_LABEL, border_weight, weights)
+    weights = tf.where(input_mask == CONTENT_LABEL, content_weight, weights)
+    return input_image, input_mask, weights
+
+
 # -
 
 if __name__ == "__main__":

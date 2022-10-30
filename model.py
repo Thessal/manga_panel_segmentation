@@ -29,7 +29,8 @@ OUTPUT_CHANNELS = 3
 # -
 
 # unet_model, using InceptionV3 as base_model
-def unet_model(output_channels):
+def unet_model(output_channels=OUTPUT_CHANNELS):
+    tf.keras.backend.clear_session()
     
     def upsample(filters, size, apply_dropout=False, strides=2, padding='valid'):
         initializer = tf.random_normal_initializer(0., 0.02)
@@ -52,7 +53,6 @@ def unet_model(output_channels):
 
 
     print(" - Creating the model")
-    OUTPUT_CHANNELS = 3
     base_model = tf.keras.applications.inception_v3.InceptionV3(
         include_top=False,
         weights='imagenet',
@@ -64,8 +64,9 @@ def unet_model(output_channels):
     )
     
     layers = [base_model.get_layer(name).output for name in [
+        'activation', #111, 111, 32
     #     'activation_1', #109, 109, 32
-        'activation_2', #109, 109, 64
+#         'activation_2', #109, 109, 64
     #     'activation_3', #54, 54, 80
         'activation_4', #52, 52, 192
     #     'activation_11', #25, 25, 32
@@ -80,7 +81,7 @@ def unet_model(output_channels):
     ]]
 
     down_stack = tf.keras.Model(inputs=base_model.input, outputs=layers)
-
+    down_stack.trainable = False
     #     down_stack.trainable = False
     up_stack = [
     #     upsample(192, 1, apply_dropout=True, padding='valid', strides=1),
@@ -88,7 +89,8 @@ def unet_model(output_channels):
         upsample(64, 3, apply_dropout=True, padding='valid', strides=2),
     #     upsample(32, 3, apply_dropout=True, padding='valid', strides=2),
         upsample(192, 4, apply_dropout=True, padding='valid', strides=2),
-        upsample(64, 7, apply_dropout=True, padding='valid', strides=2),
+#         upsample(64, 7, apply_dropout=True, padding='valid', strides=2),
+        upsample(64, 9, apply_dropout=True, padding='valid', strides=2),
     ]
 
     #     def unet_model(output_channels):
@@ -116,15 +118,32 @@ def unet_model(output_channels):
 
     # This is the last layer of the model
     last = tf.keras.layers.Conv2DTranspose(
-        output_channels, 3, strides=2,
-        padding='same')  # 64x64 -> 128x128
+        output_channels, 4, strides=2,
+        padding='valid')  # 64x64 -> 128x128
+#         padding='same')  # 64x64 -> 128x128
 
     x = last(x)
 
     return tf.keras.Model(inputs=inputs, outputs=x)
 
 
+# +
+#     tf.keras.backend.clear_session()
+#     base_model = tf.keras.applications.inception_v3.InceptionV3(
+#         include_top=False,
+#         weights='imagenet',
+#         input_tensor=None,
+#         input_shape=[IMAGE_SIZE, IMAGE_SIZE, 3],
+#         pooling=None,
+#         classes=1000,
+#         classifier_activation='leakyrelu'#'softmax'
+#     )
+#     base_model.summary()
+
 if __name__ == "__main__":    
     tmp_model = unet_model(OUTPUT_CHANNELS)
     tmp_model.summary()
     # tf.keras.utils.plot_model(tmp_model)
+# -
+
+

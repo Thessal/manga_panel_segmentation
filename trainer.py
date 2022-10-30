@@ -13,83 +13,68 @@
 #     name: python3
 # ---
 
-from data_loader import manga109_dataloader
+from data_loader import manga109_dataloader, load_image_train, tf_count
 import tensorflow as tf
 import numpy as np
 from model import unet_model
-
-# +
-# image.map(load_image_train)
-
-IMAGE_SIZE = 224
-BACKGROUND_LABEL = 0
-BORDER_LABEL = 1
-CONTENT_LABEL = 2
-OUTPUT_CHANNELS = 3
-
-
-# +
-def tf_count(t, val):
-    elements_equal_to_value = tf.equal(t, val)
-    as_ints = tf.cast(elements_equal_to_value, tf.int32)
-    count = tf.reduce_sum(as_ints)
-    return count
-
-@tf.function
-def load_image_train(datapoint):
-    # https://github.com/pedrovgs/DeepPanel
-    mask = datapoint['segmentation_mask']
-    mask = tf.where(mask == 255, np.dtype('uint8').type(BACKGROUND_LABEL), mask)
-    # Dark values will use label the background label
-    mask = tf.where(mask == 29, np.dtype('uint8').type(BACKGROUND_LABEL), mask)
-    # Intermediate values will act as the border
-    mask = tf.where(mask == 76, np.dtype('uint8').type(BORDER_LABEL), mask)
-    mask = tf.where(mask == 134, np.dtype('uint8').type(BORDER_LABEL), mask)
-    # Brighter values will act as the content
-    mask = tf.where(mask == 149, np.dtype('uint8').type(CONTENT_LABEL), mask)
-
-    # https://github.com/pedrovgs/DeepPanel
-    input_image = tf.image.resize_with_pad(datapoint['image'], target_height=IMAGE_SIZE, target_width=IMAGE_SIZE)
-    input_mask = tf.image.resize_with_pad(mask, target_height=IMAGE_SIZE,
-                                          target_width=IMAGE_SIZE)
-    if tf.random.uniform(()) > 0.5:
-        input_image = tf.image.flip_left_right(input_image)
-        input_mask = tf.image.flip_left_right(input_mask)
-    # input_image, input_mask = normalize(input_image, input_mask)
-    number_of_pixels_per_image = IMAGE_SIZE * IMAGE_SIZE
-    percentage_of_background_labels = tf_count(input_mask, BACKGROUND_LABEL) / number_of_pixels_per_image
-    percentage_of_content_labels = tf_count(input_mask, CONTENT_LABEL) / number_of_pixels_per_image
-    percentage_of_border_labels = tf_count(input_mask, BORDER_LABEL) / number_of_pixels_per_image
-    background_weight = tf.cast(0.33 / percentage_of_background_labels, tf.float32)
-    content_weight = tf.cast(0.34 / percentage_of_content_labels, tf.float32)
-    border_weight = tf.cast(0.33 / percentage_of_border_labels, tf.float32)
-    weights = tf.where(input_mask == BACKGROUND_LABEL, background_weight, input_mask)
-    weights = tf.where(input_mask == BORDER_LABEL, border_weight, weights)
-    weights = tf.where(input_mask == CONTENT_LABEL, content_weight, weights)
-    return input_image, input_mask, weights
-# -
-
-
+from metrics import *
 
 if __name__ == "__main__":
-    dataloader = manga109_dataloader()
+    ## model
+    model = unet_model()
+    model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              metrics=[
+                  'accuracy',
+                  border_acc,
+                  content_acc,
+                  background_acc,
+                  iou_coef,
+                  dice_coef])
+    # tf.keras.utils.plot_model(model, show_shapes=True)
     
-    ## Network test
+    ## data
+    dataloader = manga109_dataloader()
     key, image, mask = next(dataloader.load_all())
-    datapoint = {"image": image, "segmentation_mask": mask}
-    print(set(np.unique(datapoint['segmentation_mask'].numpy())))
-    assert(set(np.unique(datapoint['segmentation_mask'].numpy())).issubset({29,76,134,149,255}))
-    input_image, input_mask, weights = load_image_train(datapoint)
+    assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
+    
+    ## infer
+    key, image, mask = next(dataloader.load_all())
+    input_image, input_mask, weights = load_image_train(key, image, mask)
+    batch = tf.stack([input_image, ])
+    model(batch)
     
     ## Pipelining
     ds = tf.data.Dataset.from_generator(
-    dataloader.load_all, 
-    output_types=(tf.string, tf.uint8, tf.uint8), 
-    output_shapes=(None, (None,None,3), (None,None,1)))
-    
-    unet_model = unet_model(OUTPUT_CHANNELS)
+        dataloader.load_all, 
+        output_types=(tf.string, tf.uint8, tf.uint8), 
+        output_shapes=(None, (None,None,3), (None,None,1))
+    )
+    AUTOTUNE = tf.data.experimental.AUTOTUNE
+    train = train_raw_dataset.map(load_image_train, AUTOTUNE)
+    BUFFER_SIZE=1
+    TRAINING_BATCH_SIZE=1
+    train_dataset = train.cache().shuffle(BUFFER_SIZE).batch(TRAINING_BATCH_SIZE)
+    train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
+#     print(" - Starting training stage")
+#     model_history = model.fit(train_dataset,
+#                               epochs=EPOCHS,
+#                               validation_data=test_dataset,
+#                               use_multiprocessing=True,
+#                               workers=CORES_COUNT,
+#                               callbacks=[DisplayCallback()])
+#     print(" - Training finished, saving metrics into ./graphs")
+#     save_model_history_metrics(EPOCHS, model_history)
+#     print(" - Training finished, saving model into ./model")
+#     output_path = "./model"
+#     if not os.path.exists(output_path):
+#         os.makedirs(output_path)
+#     model.save(output_path)
+#     print(" - Model updated and saved")
     
     ## dataset test
     train_batches = ds.take(10)
     for x in train_batches.batch(2).enumerate():
         print(x)
+
+
