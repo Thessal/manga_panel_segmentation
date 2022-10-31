@@ -42,15 +42,9 @@ if __name__ == "__main__":
     
 #     ## data
     dataloader = manga109_dataloader()
-    key, image, mask = next(dataloader.load_all())
-    assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
-    
-#     ## infer
 #     key, image, mask = next(dataloader.load_all())
-#     input_image, input_mask, weights = load_image_train(key, image, mask)
-# #     print(input_image.shape, input_mask.shape, weights.shape)
-#     batch = tf.stack([input_image, ])
-#     model(batch)
+#     assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
+    
     
     ## Pipelining
     train_raw_dataset = tf.data.Dataset.from_generator(
@@ -82,20 +76,49 @@ if __name__ == "__main__":
                               use_multiprocessing=True,
                               workers=CORES_COUNT,
                               callbacks=[DisplayCallback()])
-#     print(" - Training finished, saving metrics into ./graphs")
-#     save_model_history_metrics(EPOCHS, model_history)
-#     print(" - Training finished, saving model into ./model")
-#     output_path = "./model"
-#     if not os.path.exists(output_path):
-#         os.makedirs(output_path)
-#     model.save(output_path)
-#     print(" - Model updated and saved")
+
+    print(" - Training finished, saving metrics into ./graphs")
+    save_model_history_metrics(EPOCHS, model_history)
+    print(" - Training finished, saving model into ./model")
+    output_path = "./model"
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    model.save(output_path)
+    print(" - Model updated and saved")
     
-    ## dataset test
-    train_batches = ds.take(10)
-    for x in train_batches.batch(2).enumerate():
-        print(x)
+    ## infer
+    key, image, mask = next(dataloader.load_all())
+    input_image, input_mask, weights = load_image_train(key, image, mask)
+    #     print(input_image.shape, input_mask.shape, weights.shape)
+    batch = tf.stack([input_image, ])
+    result = model(batch)
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(10,10))
+    np_result = result.numpy()[0,:,:,:]
+    np_max = np.max(np_result, axis=2) # TODO : adjust weight
+    np_result[:,:,0] = np.where(np_result[:,:,0] == np_max, 255, 0) 
+    np_result[:,:,1] = np.where(np_result[:,:,1] == np_max, 255, 0)
+    np_result[:,:,2] = np.where(np_result[:,:,2] == np_max, 255, 0)
+    plt.imshow((np_result[:,:,:]/2+1).astype(np.uint8))
 # -
+
+
+
+# +
+#     key, image, mask = next(dataloader.load_all())
+#     assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
+
+    ## dataset test
+#     train_batches = ds.take(10)
+#     for x in train_batches.batch(2).enumerate():
+#         print(x)
+
+
+# -
+
+
+
+
 
 
 

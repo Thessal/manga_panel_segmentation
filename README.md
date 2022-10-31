@@ -1,11 +1,29 @@
 # manga_panel_segmentation
-TODO : manga panel segmentation using unet
+manga panel segmentation using unet
+
+inceptionV3-based Unet was designed and trained on manga109-s dataset
 
 ## TODO
-* train model
-* panel order detection
+  * handle skew frames and speech bubble when generating dataset
+  * add dropouts to the model
 
-### Reference
+
+## Model performance
+model structure : see model.png
+  * 7742 pages for training
+  * 860 pages for testing
+
+### Demo
+<!-- ![Model](./model.png) -->
+![Demo](./demo.png)
+
+### Accuracy
+![acc](./graphs/acc_per_label.png)
+
+
+## Reference
+
+> DeepPanel : https://github.com/pedrovgs/DeepPanel
 
 > Matsui, Yusuke, Kota Ito, Yuji Aramaki, Azuma Fujimoto, Toru Ogawa, Toshihiko Yamasaki, and Kiyoharu Aizawa. "Sketch-based manga retrieval using manga109 dataset." Multimedia Tools and Applications 76, no. 20 (2017): 21811-21838.
 
