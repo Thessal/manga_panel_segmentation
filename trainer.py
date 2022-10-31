@@ -116,7 +116,10 @@ if __name__ == "__main__":
 
 # -
 
-
+plt.figure(figsize=(10,10))
+plt.imshow(input_image.numpy().astype(np.uint8))
+plt.figure(figsize=(10,10))
+plt.imshow((np_result[:,:,:]/2+1).astype(np.uint8))
 
 
 

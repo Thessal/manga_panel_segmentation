@@ -4,7 +4,8 @@ manga panel segmentation using unet
 inceptionV3-based Unet was designed and trained on manga109-s dataset
 
 ## TODO
-  * handle skew frames and speech bubble when generating dataset
+  * increase resolution of model or split input dataset
+  * handle trapezoidal frames and speech bubble when generating dataset
   * add dropouts to the model
 
 
@@ -15,7 +16,11 @@ model structure : see model.png
 
 ### Demo
 <!-- ![Model](./model.png) -->
+Frame detection is too sensitive
+
 ![Demo](./demo.png)
+![Demo](./demo-orig.png)
+
 
 ### Accuracy
 ![acc](./graphs/acc_per_label.png)
