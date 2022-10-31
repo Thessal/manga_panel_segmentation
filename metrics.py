@@ -23,6 +23,7 @@ from keras import backend as K
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from model import BORDER_LABEL, CONTENT_LABEL, BACKGROUND_LABEL
+from data_loader import tf_count
 
 def iou_coef(y_true, y_pred, smooth=1):
     intersection = K.sum(K.abs(y_true * y_pred), axis=[1, 2, 3])

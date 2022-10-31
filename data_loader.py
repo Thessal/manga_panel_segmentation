@@ -146,7 +146,7 @@ class manga109_dataloader:
 
         return image, mask
 
-    def load_all(self, shuffle=True):
+    def load_all(self, shuffle=True, train=True):
         q = []
         for book in self.books:
             with open(self.path_annotations+"/"+book+".xml", 'r') as f:
@@ -154,6 +154,10 @@ class manga109_dataloader:
             pages = annotation[1]
             for page in pages:
                 q.append((book, page))
+        if train:
+            q = [item for index, item in enumerate(q) if index % 10 != 0]
+        else : # test
+            q = [item for index, item in enumerate(q) if index % 10 == 0]
                 
         if shuffle:
             random.shuffle(q)

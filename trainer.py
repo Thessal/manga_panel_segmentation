@@ -19,6 +19,13 @@ import numpy as np
 from model import unet_model
 from metrics import *
 
+
+class DisplayCallback(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        print('\n    - Training finished for epoch {}\n'.format(epoch + 1))
+
+
+# +
 if __name__ == "__main__":
     ## model
     model = unet_model()
@@ -33,36 +40,48 @@ if __name__ == "__main__":
                   dice_coef])
     # tf.keras.utils.plot_model(model, show_shapes=True)
     
-    ## data
+#     ## data
     dataloader = manga109_dataloader()
     key, image, mask = next(dataloader.load_all())
     assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
     
-    ## infer
-    key, image, mask = next(dataloader.load_all())
-    input_image, input_mask, weights = load_image_train(key, image, mask)
-    batch = tf.stack([input_image, ])
-    model(batch)
+#     ## infer
+#     key, image, mask = next(dataloader.load_all())
+#     input_image, input_mask, weights = load_image_train(key, image, mask)
+# #     print(input_image.shape, input_mask.shape, weights.shape)
+#     batch = tf.stack([input_image, ])
+#     model(batch)
     
     ## Pipelining
-    ds = tf.data.Dataset.from_generator(
-        dataloader.load_all, 
+    train_raw_dataset = tf.data.Dataset.from_generator(
+        lambda : dataloader.load_all(shuffle=False, train=True), 
         output_types=(tf.string, tf.uint8, tf.uint8), 
         output_shapes=(None, (None,None,3), (None,None,1))
     )
     AUTOTUNE = tf.data.experimental.AUTOTUNE
     train = train_raw_dataset.map(load_image_train, AUTOTUNE)
-    BUFFER_SIZE=1
-    TRAINING_BATCH_SIZE=1
+    
+    TRAINING_BATCH_SIZE=20
+    BUFFER_SIZE = 20
+    EPOCHS = 10
+    CORES_COUNT = 4
+    TESTING_BATCH_SIZE = 100
+    
     train_dataset = train.cache().shuffle(BUFFER_SIZE).batch(TRAINING_BATCH_SIZE)
     train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
-#     print(" - Starting training stage")
-#     model_history = model.fit(train_dataset,
-#                               epochs=EPOCHS,
-#                               validation_data=test_dataset,
-#                               use_multiprocessing=True,
-#                               workers=CORES_COUNT,
-#                               callbacks=[DisplayCallback()])
+    test_dataset = tf.data.Dataset.from_generator(
+        lambda : dataloader.load_all(shuffle=False, train=False), 
+        output_types=(tf.string, tf.uint8, tf.uint8), 
+        output_shapes=(None, (None,None,3), (None,None,1))
+    ).map(load_image_train).batch(TESTING_BATCH_SIZE)
+
+    print(" - Starting training stage")
+    model_history = model.fit(train_dataset,
+                              epochs=EPOCHS,
+                              validation_data=test_dataset,
+                              use_multiprocessing=True,
+                              workers=CORES_COUNT,
+                              callbacks=[DisplayCallback()])
 #     print(" - Training finished, saving metrics into ./graphs")
 #     save_model_history_metrics(EPOCHS, model_history)
 #     print(" - Training finished, saving model into ./model")
@@ -76,5 +95,8 @@ if __name__ == "__main__":
     train_batches = ds.take(10)
     for x in train_batches.batch(2).enumerate():
         print(x)
+# -
+
+
 
 
