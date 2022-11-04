@@ -19,11 +19,7 @@ import tensorflow as tf
 import numpy as np
 # from examples.tensorflow_examples.models.pix2pix import pix2pix # use custom one
 
-IMAGE_SIZE = 224
-BACKGROUND_LABEL = 0
-BORDER_LABEL = 1
-CONTENT_LABEL = 2
-OUTPUT_CHANNELS = 3
+from const import IMAGE_SIZE, BORDER_LABEL, CONTENT_LABEL, BACKGROUND_LABEL, FACE_LABEL, TEXT_LABEL, OUTPUT_CHANNELS
 
 
 # -
@@ -45,7 +41,8 @@ def unet_model(output_channels=OUTPUT_CHANNELS):
         result.add(tf.keras.layers.BatchNormalization())
 
         if apply_dropout:
-            result.add(tf.keras.layers.Dropout(0.5))
+#             result.add(tf.keras.layers.Dropout(0.5))
+            result.add(tf.keras.layers.Dropout(0.1))
 
         result.add(tf.keras.layers.ReLU())
 
@@ -85,12 +82,12 @@ def unet_model(output_channels=OUTPUT_CHANNELS):
     #     down_stack.trainable = False
     up_stack = [
     #     upsample(192, 1, apply_dropout=True, padding='valid', strides=1),
-        upsample(192, 4, apply_dropout=True, padding='valid', strides=2),
-        upsample(64, 3, apply_dropout=True, padding='valid', strides=2),
+        upsample(192, 4, apply_dropout=False, padding='valid', strides=2),
+        upsample(64, 3, apply_dropout=False, padding='valid', strides=2),
     #     upsample(32, 3, apply_dropout=True, padding='valid', strides=2),
-        upsample(192, 4, apply_dropout=True, padding='valid', strides=2),
+        upsample(192, 4, apply_dropout=False, padding='valid', strides=2),
 #         upsample(64, 7, apply_dropout=True, padding='valid', strides=2),
-        upsample(64, 9, apply_dropout=True, padding='valid', strides=2),
+        upsample(64, 9, apply_dropout=False, padding='valid', strides=2),
     ]
 
     #     def unet_model(output_channels):

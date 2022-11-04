@@ -22,7 +22,7 @@ import os
 from keras import backend as K
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from model import BORDER_LABEL, CONTENT_LABEL, BACKGROUND_LABEL
+from model import BORDER_LABEL, CONTENT_LABEL, BACKGROUND_LABEL, FACE_LABEL, TEXT_LABEL
 from data_loader import tf_count
 
 def iou_coef(y_true, y_pred, smooth=1):
@@ -60,6 +60,11 @@ def content_acc(y_true, y_pred):
 def background_acc(y_true, y_pred):
     return acc_per_label(y_true, y_pred, BACKGROUND_LABEL)
 
+def face_acc(y_true, y_pred):
+    return acc_per_label(y_true, y_pred, FACE_LABEL)
+
+def text_acc(y_true, y_pred):
+    return acc_per_label(y_true, y_pred, TEXT_LABEL)
 
 def save_model_history_metrics(epochs, history):
     epochs = range(epochs)
@@ -71,6 +76,8 @@ def save_model_history_metrics(epochs, history):
     save_border_acc_history_metrics(epochs, history)
     save_content_acc_history_metrics(epochs, history)
     save_background_acc_history_metrics(epochs, history)
+    save_face_acc_history_metrics(epochs, history)
+    save_text_acc_history_metrics(epochs, history)
     save_acc_history_metrics_per_label(epochs, history)
 
 
@@ -78,10 +85,14 @@ def save_acc_history_metrics_per_label(epochs, history):
     val_border_metrics = history.history['val_border_acc']
     val_content_metrics = history.history['val_content_acc']
     val_background_metrics = history.history['val_background_acc']
+    val_face_metrics = history.history['val_face_acc']
+    val_text_metrics = history.history['val_text_acc']
     plt.figure()
     plt.plot(epochs, val_border_metrics, 'r', label='Validation border acc')
     plt.plot(epochs, val_content_metrics, 'g', label='Validation content acc')
     plt.plot(epochs, val_background_metrics, 'b', label='Validation background acc')
+    plt.plot(epochs, val_face_metrics, 'y', label='Validation face acc')
+    plt.plot(epochs, val_text_metrics, 'purple', label='Validation text acc')
     plt.title('Training and Validation Border ACC')
     plt.xlabel('Epoch')
     plt.ylabel('Acc Value')
@@ -126,6 +137,31 @@ def save_background_acc_history_metrics(epochs, history):
     plt.ylabel('Acc Value')
     plt.legend()
     plt.savefig('./graphs/background_acc.png')
+
+def save_face_acc_history_metrics(epochs, history):
+    metrics = history.history['face_acc']
+    val_metrics = history.history['val_face_acc']
+    plt.figure()
+    plt.plot(epochs, metrics, 'r', label='Training face acc')
+    plt.plot(epochs, val_metrics, 'b', label='Validation face acc')
+    plt.title('Training and Validation Face ACC')
+    plt.xlabel('Epoch')
+    plt.ylabel('Acc Value')
+    plt.legend()
+    plt.savefig('./graphs/face_acc.png')
+
+
+def save_text_acc_history_metrics(epochs, history):
+    metrics = history.history['text_acc']
+    val_metrics = history.history['val_text_acc']
+    plt.figure()
+    plt.plot(epochs, metrics, 'r', label='Training text acc')
+    plt.plot(epochs, val_metrics, 'b', label='Validation text acc')
+    plt.title('Training and Validation text ACC')
+    plt.xlabel('Epoch')
+    plt.ylabel('Acc Value')
+    plt.legend()
+    plt.savefig('./graphs/text_acc.png')
 
 
 def save_acc_history_metrics(epochs, history):

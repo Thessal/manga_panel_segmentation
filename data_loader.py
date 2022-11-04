@@ -72,10 +72,12 @@ class manga109_dataloader:
         self.skip_empty = skip_empty
     
     @staticmethod
-    def make_mask(image_shape, frames):
+    def make_mask(image_shape, frames, faces, texts):
         np_mask = np.zeros(image_shape, dtype=np.uint8)
         np_mask[:,:,2] = 255
         y_siz, x_siz = np_mask.shape[0:2]
+        face_mask = np.zeros(np_mask.shape[0:2], dtype=bool)
+        text_mask = np.zeros(np_mask.shape[0:2], dtype=bool)
         border_mask = np.zeros(np_mask.shape[0:2], dtype=bool)
         inside_mask = np.zeros(np_mask.shape[0:2], dtype=bool)
         r = 10
@@ -91,15 +93,29 @@ class manga109_dataloader:
 #                 border_mask[y0+r:y1-r, x0+r:x1-r]=False
 #                 inside_mask[y0+r:y1-r, x0+r:x1-r]=True
                 inside_mask[y0+r:y1-r, x0+r:x1-r]=True
+        for face in faces:
+            y0, y1, x0, x1 = int(face["ymin"]), int(face["ymax"]),int(face["xmin"]), int(face["xmax"])
+            face_mask[y0:y1, x0:x1]=True
+        for text in texts:
+            y0, y1, x0, x1 = int(text["ymin"]), int(text["ymax"]),int(text["xmin"]), int(text["xmax"])
+            text_mask[y0:y1, x0:x1]=True
+            
 
         np_mask[:,:,1] = 255 * (scipy.ndimage.binary_dilation(border_mask, kernel)^inside_mask)
         np_mask[:,:,0] = 255 * inside_mask
         np_mask[:,:,2] = np.where(np.sum(np_mask[:,:,[0,1]], axis=2),0,255)
-
+        # np_mask[:,:,[1,2]] = np.where(((body_mask&inside_mask))[:,:,np.newaxis],255,np_mask[:,:,[1,2]])
+        _inside_mask = (np_mask[:,:,0] == 255) & (np_mask[:,:,1] == 0) & (np_mask[:,:,2] == 0)
+        np_mask[:,:,1] = np.where((face_mask&_inside_mask)&(~text_mask), 255, np_mask[:,:,1])
+        np_mask[:,:,2] = np.where(text_mask&_inside_mask, 255, np_mask[:,:,2])
+        ## Be careful, exception may cause nan loss
+        
         return tf.convert_to_tensor(np_mask)
 
     @staticmethod
     def augment(image, mask, r=10):
+        # TODO : add chanel for speech bubble
+        # TODO : consider adding image size/shift noise
         max_angle = 3
         border_px = r * 2
         degrees = np.random.random(1)[0] * max_angle * 2 - max_angle
@@ -139,12 +155,24 @@ class manga109_dataloader:
         # handle panel on border
         np_border = np.ones(np_mask.shape[:2], dtype=bool)
         np_border[border_px:np_mask.shape[0]-border_px, border_px:np_mask.shape[1]-border_px] = False
-        np_border = np.where(np_mask[:,:,0]==255 , np_border, False)
-        np_mask[:,:,1] = np.where( np_border , 255 , np_mask[:,:,1] )
+        _outside = (np_mask[:,:,0] == 0) & (np_mask[:,:,1] == 0) & (np_mask[:,:,2] == 255)
+        np_border = (~_outside) & (np_border)
         np_mask[:,:,0] = np.where( np_border , 0 , np_mask[:,:,0] )
+        np_mask[:,:,1] = np.where( np_border , 255 , np_mask[:,:,1] )
+        np_mask[:,:,2] = np.where( np_border , 0 , np_mask[:,:,2] )
         mask = tf.convert_to_tensor(np_mask)
-
+        
         return image, mask
+    
+    @staticmethod
+    def _get_info(book, page, side):
+        faces = sorted([x.attrib for x in page if x.tag=="face"], key=lambda x: x["id"], reverse=False)
+        texts = sorted([x.attrib for x in page if x.tag=="text"], key=lambda x: x["id"], reverse=False)
+        frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
+        info = {
+            "book":book, "index":page.attrib["index"], "frames":[dict(frame) for frame in frames], 
+            "faces":faces, "texts":texts, "side":side}
+        return info
 
     def load_all(self, shuffle=True, train=True):
         q = []
@@ -153,7 +181,8 @@ class manga109_dataloader:
                 annotation = et.fromstring(f.read())
             pages = annotation[1]
             for page in pages:
-                q.append((book, page))
+                for side in ["L", "R"]:
+                    q.append((book, page, side))
         if train:
             q = [item for index, item in enumerate(q) if index % 10 != 0]
         else : # test
@@ -162,13 +191,12 @@ class manga109_dataloader:
         if shuffle:
             random.shuffle(q)
             
-        for book, page in q:
-            frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
-            info = {"book":book, "index":page.attrib["index"], "frames":[dict(frame) for frame in frames]}
+        for book, page, side in q:
+            info = self._get_info(book, page, side)
             image, mask = self.load(**info)
             if (image == None) or (mask==None):
                 continue
-            key = f"{book}_{str(page.attrib['index'])}"
+            key = f"{book}_{str(page.attrib['index'])}_{side}"
             yield key, image, mask
     
     def load_page_info(self):
@@ -177,40 +205,40 @@ class manga109_dataloader:
                 annotation = et.fromstring(f.read())
             pages = annotation[1]
             for page in pages:
-                frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
-                if len(frames)>0:
-                    info = {"book":book, "index":page.attrib["index"], "frames":[dict(frame) for frame in frames]}
-                    yield json.dumps(info)
+                for side in ["L", "R"]:
+                    info = self._get_info(book, page, side)
+                    if len(info["frames"])> 0 :
+                        yield json.dumps(info)
     
-    def load(self, book, index, frames, grayscale=True):
+    def load(self, book, index, frames, faces, texts, side, grayscale=True):
         pagenum = index
-#         frames = sorted([x.attrib for x in page if x.tag=="frame"], key=lambda x: x["id"], reverse=False)
-
         image_path = self.path_images+"/"+book+f"/{('000'+pagenum)[-3:]}.jpg"
         image = tf.io.read_file(image_path)
         image = tf.image.decode_jpeg(image, channels=3)
         
         if self.skip_empty and (len(frames) == 0):
             return None, None
-        mask = self.make_mask(image.shape,frames)
+        mask = self.make_mask(image.shape,frames, faces, texts)
         image, mask = self.augment(image, mask)
         if grayscale:
             mask = tf.image.rgb_to_grayscale(mask)
         
-        return image, mask
-
+        image_width = image.shape[1]
+        if side=="L":
+            return image[:,:image_width//2,:], mask[:,:image_width//2,:]
+        elif side=="R":
+            return image[:,image_width//2:,:], mask[:,image_width//2:,:]
+        else:
+            return image, mask
 
 # +
-IMAGE_SIZE = 224
-BACKGROUND_LABEL = 0
-BORDER_LABEL = 1
-CONTENT_LABEL = 2
+from const import IMAGE_SIZE, BORDER_LABEL, CONTENT_LABEL, BACKGROUND_LABEL, FACE_LABEL, TEXT_LABEL, OUTPUT_CHANNELS
 
 def tf_count(t, val):
     elements_equal_to_value = tf.equal(t, val)
     as_ints = tf.cast(elements_equal_to_value, tf.int32)
     count = tf.reduce_sum(as_ints)
-    return count
+    return 1+count # +1 to prevent nan
 
 @tf.function
 def load_image_train(key, image, mask):
@@ -223,6 +251,9 @@ def load_image_train(key, image, mask):
     mask = tf.where(mask == 134, np.dtype('uint8').type(BORDER_LABEL), mask)
     # Brighter values will act as the content
     mask = tf.where(mask == 149, np.dtype('uint8').type(CONTENT_LABEL), mask)
+    # 
+    mask = tf.where(mask == 226, np.dtype('uint8').type(FACE_LABEL), mask)
+    mask = tf.where(mask == 105, np.dtype('uint8').type(TEXT_LABEL), mask)
 
     # https://github.com/pedrovgs/DeepPanel
     input_image = tf.image.resize_with_pad(image, target_height=IMAGE_SIZE, target_width=IMAGE_SIZE)
@@ -236,12 +267,19 @@ def load_image_train(key, image, mask):
     percentage_of_background_labels = tf_count(input_mask, BACKGROUND_LABEL) / number_of_pixels_per_image
     percentage_of_content_labels = tf_count(input_mask, CONTENT_LABEL) / number_of_pixels_per_image
     percentage_of_border_labels = tf_count(input_mask, BORDER_LABEL) / number_of_pixels_per_image
-    background_weight = tf.cast(0.33 / percentage_of_background_labels, tf.float32)
-    content_weight = tf.cast(0.34 / percentage_of_content_labels, tf.float32)
-    border_weight = tf.cast(0.33 / percentage_of_border_labels, tf.float32)
+    percentage_of_text_labels = tf_count(input_mask, TEXT_LABEL) / number_of_pixels_per_image
+    percentage_of_face_labels = tf_count(input_mask, FACE_LABEL) / number_of_pixels_per_image
+    background_weight = tf.cast(0.2 / percentage_of_background_labels, tf.float32)
+    content_weight = tf.cast(0.2 / percentage_of_content_labels, tf.float32)
+    border_weight = tf.cast(0.2 / percentage_of_border_labels, tf.float32)
+    text_weight = tf.cast(0.2 / percentage_of_text_labels, tf.float32)
+    face_weight = tf.cast(0.2 / percentage_of_face_labels, tf.float32)
     weights = tf.where(input_mask == BACKGROUND_LABEL, background_weight, input_mask)
     weights = tf.where(input_mask == BORDER_LABEL, border_weight, weights)
     weights = tf.where(input_mask == CONTENT_LABEL, content_weight, weights)
+    weights = tf.where(input_mask == TEXT_LABEL, text_weight, weights)
+    weights = tf.where(input_mask == FACE_LABEL, face_weight, weights)
+    
     return input_image, input_mask, weights
 
 
@@ -267,6 +305,9 @@ if __name__ == "__main__":
     for _ in range(3):
         key, image, mask = next(img_mask)
         show(image, mask)
+        plt.colorbar()
+
+
 
 
 

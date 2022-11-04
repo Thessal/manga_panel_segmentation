@@ -17,6 +17,7 @@ from data_loader import manga109_dataloader, load_image_train, tf_count
 import tensorflow as tf
 import numpy as np
 from model import unet_model
+from const import OUTPUT_CHANNELS
 from metrics import *
 
 
@@ -24,6 +25,40 @@ class DisplayCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         print('\n    - Training finished for epoch {}\n'.format(epoch + 1))
 
+# +
+# dataloader = manga109_dataloader()
+# for i in range(1000):
+#         print(i)
+#         key, image, mask = next(dataloader.load_all())
+#         assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255,226,105}))
+
+# print(key)
+# # plt.figure(figsize=(20,20))
+# # plt.imshow(image.numpy())
+
+# plt.figure(figsize=(20,20))
+# plt.imshow(mask.numpy())
+
+
+# # set(np.unique(mask.numpy()))
+# dataloader = manga109_dataloader()
+# #0.3*R + 0.59*G + 0.11*B
+# #76.5 + 150.45 + 28.05
+# import json
+# book = "HanzaiKousyouninMinegishiEitarou"
+# index = "95"
+# side = "R"
+# a = {x["book"]+"_"+x["index"]:x for x in [json.loads(x) for x in dataloader.load_page_info()]}
+# tf_img, tf_mask = dataloader.load(book=book,index=index,side=side,
+#                 frames=a[book+"_"+index]["frames"],
+#                 faces=a[book+"_"+index]["faces"],
+#                 texts=a[book+"_"+index]["texts"],
+#                )
+# # print(key)
+
+
+# plt.figure(figsize=(20,20))
+# plt.imshow(tf_mask.numpy())
 
 # +
 if __name__ == "__main__":
@@ -36,15 +71,20 @@ if __name__ == "__main__":
                   border_acc,
                   content_acc,
                   background_acc,
+                  face_acc,
+                  text_acc,
                   iou_coef,
                   dice_coef])
     # tf.keras.utils.plot_model(model, show_shapes=True)
     
-#     ## data
+    ## data
+    ## Be careful, exception will cause nan loss
     dataloader = manga109_dataloader()
-#     key, image, mask = next(dataloader.load_all())
-#     assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
-    
+#     for i in range(1000):
+#         print(i)
+#         key, image, mask = next(dataloader.load_all())
+#         assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255,226,105}))
+        
     
     ## Pipelining
     train_raw_dataset = tf.data.Dataset.from_generator(
@@ -68,6 +108,10 @@ if __name__ == "__main__":
         output_types=(tf.string, tf.uint8, tf.uint8), 
         output_shapes=(None, (None,None,3), (None,None,1))
     ).map(load_image_train).batch(TESTING_BATCH_SIZE)
+    
+#     EPOCHS = 1 # debug
+#     train_dataset = train_raw_dataset.take(10).map(load_image_train).batch(1) # debug
+#     test_dataset = train_raw_dataset.take(10).map(load_image_train).batch(1) # debug
 
     print(" - Starting training stage")
     model_history = model.fit(train_dataset,
@@ -96,24 +140,20 @@ if __name__ == "__main__":
     plt.figure(figsize=(10,10))
     np_result = result.numpy()[0,:,:,:]
     np_max = np.max(np_result, axis=2) # TODO : adjust weight
-    np_result[:,:,0] = np.where(np_result[:,:,0] == np_max, 255, 0) 
-    np_result[:,:,1] = np.where(np_result[:,:,1] == np_max, 255, 0)
-    np_result[:,:,2] = np.where(np_result[:,:,2] == np_max, 255, 0)
+    for i in range(OUTPUT_CHANNELS):
+        np_result[:,:,i] = np.where(np_result[:,:,i] == np_max, 255, 0) 
+    np_result = np.stack([
+        np_result[:,:,0]+np_result[:,:,3]+np_result[:,:,4], 
+        np_result[:,:,1]+np_result[:,:,3],
+        np_result[:,:,2]+np_result[:,:,4], 
+    ], axis=2)
+    np_result = np_result / np_result.max() * 255
     plt.imshow((np_result[:,:,:]/2+1).astype(np.uint8))
-# -
-
-
-
 # +
-#     key, image, mask = next(dataloader.load_all())
-#     assert(set(np.unique(mask.numpy())).issubset({29,76,134,149,255}))
-
-    ## dataset test
-#     train_batches = ds.take(10)
-#     for x in train_batches.batch(2).enumerate():
-#         print(x)
-
-
+# batch = tf.stack([input_image, ])
+# result = model(batch)
+# np_result = result.numpy()[0,:,:,:]
+# np_result
 # -
 
 plt.figure(figsize=(10,10))
