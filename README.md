@@ -4,9 +4,10 @@ manga panel segmentation using unet
 inceptionV3-based Unet was designed and trained on manga109-s dataset
 
 ## TODO
-  * increase resolution of model or split input dataset
+  * increase epoch
   * handle trapezoidal frames and speech bubble when generating dataset
-  * add dropouts to the model
+  * strict validation set divide
+  * model optimize
 
 
 ## Model performance
