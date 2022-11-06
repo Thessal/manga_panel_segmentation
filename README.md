@@ -17,13 +17,17 @@ model structure : see model.png
 
 ### Demo
 <!-- ![Model](./model.png) -->
-Frame detection is too sensitive
 
-![Demo](./demo.png)
 ![Demo](./demo-orig.png)
+![Demo](./demo.png)
+![Demo](./demo-postprocessing.png)
+
 
 
 ### Accuracy
+
+Needs improvement
+
 ![acc](./graphs/acc_per_label.png)
 
 

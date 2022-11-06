@@ -42,7 +42,7 @@ def unet_model(output_channels=OUTPUT_CHANNELS):
 
         if apply_dropout:
 #             result.add(tf.keras.layers.Dropout(0.5))
-            result.add(tf.keras.layers.Dropout(0.1))
+            result.add(tf.keras.layers.Dropout(0.2))
 
         result.add(tf.keras.layers.ReLU())
 
@@ -82,12 +82,12 @@ def unet_model(output_channels=OUTPUT_CHANNELS):
     #     down_stack.trainable = False
     up_stack = [
     #     upsample(192, 1, apply_dropout=True, padding='valid', strides=1),
-        upsample(192, 4, apply_dropout=False, padding='valid', strides=2),
-        upsample(64, 3, apply_dropout=False, padding='valid', strides=2),
+        upsample(192, 4, apply_dropout=True, padding='valid', strides=2),
+        upsample(64, 3, apply_dropout=True, padding='valid', strides=2),
     #     upsample(32, 3, apply_dropout=True, padding='valid', strides=2),
-        upsample(192, 4, apply_dropout=False, padding='valid', strides=2),
+        upsample(192, 4, apply_dropout=True, padding='valid', strides=2),
 #         upsample(64, 7, apply_dropout=True, padding='valid', strides=2),
-        upsample(64, 9, apply_dropout=False, padding='valid', strides=2),
+        upsample(64, 9, apply_dropout=True, padding='valid', strides=2),
     ]
 
     #     def unet_model(output_channels):

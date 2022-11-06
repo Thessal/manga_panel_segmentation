@@ -97,7 +97,7 @@ if __name__ == "__main__":
     
     TRAINING_BATCH_SIZE=20
     BUFFER_SIZE = 20
-    EPOCHS = 10
+    EPOCHS = 50
     CORES_COUNT = 4
     TESTING_BATCH_SIZE = 100
     
@@ -149,22 +149,43 @@ if __name__ == "__main__":
     ], axis=2)
     np_result = np_result / np_result.max() * 255
     plt.imshow((np_result[:,:,:]/2+1).astype(np.uint8))
-# +
-# batch = tf.stack([input_image, ])
-# result = model(batch)
-# np_result = result.numpy()[0,:,:,:]
-# np_result
 # -
+if __name__=="__main__":
 
-plt.figure(figsize=(10,10))
-plt.imshow(input_image.numpy().astype(np.uint8))
-plt.savefig('demo-orig.png')
-plt.figure(figsize=(10,10))
-plt.imshow((np_result[:,:,:]/2+1).astype(np.uint8))
-plt.savefig('demo.png')
-
-
-
-
+    from model import unet_model
+    import tensorflow as tf
+    import numpy as np
+    from postprocessing import process_image
+    import matplotlib.pyplot as plt
+    model = unet_model()
+    model.load_weights("./model")
+    
+    image = tf.io.read_file('Manga109s_released_2021_12_30/images/LoveHina_vol01/025.jpg')
+    image = tf.image.decode_jpeg(image, channels=3)
+    image = image[:,image.shape[1]//2:]
+    
+    input_image,_,_=load_image_train("",image, image)
+    batch = tf.stack([input_image])
+    result = model(batch)
+    raw_result = result.numpy()[0,:,:,:].argmax(axis=2)
+    raw_result = np.stack([
+            np.isin(raw_result,[0,3,4]),
+            np.isin(raw_result,[1,3]),
+            np.isin(raw_result,[2,4]),
+        ], axis=2)
+    
+    orig, mask_cell, mask_text, mask_face = process_image(model, image_path=image)
+    demo_output = np.stack([mask_cell, mask_text, mask_face], axis=2)
+    demo_output = np.where(demo_output==0, 0, demo_output+5)
+    
+    plt.figure(figsize=(5,5))
+    plt.imshow(orig.numpy().astype(np.uint8))
+    plt.savefig('demo-orig.png')
+    plt.figure(figsize=(5,5))
+    plt.imshow(raw_result*255)
+    plt.savefig('demo.png')
+    plt.figure(figsize=(5,5))
+    plt.imshow(np.clip(demo_output.astype(float) / np.max(demo_output, axis=(0,1))[np.newaxis, np.newaxis, :],0,1))
+    plt.savefig('demo-postprocessing.png')
 
 
